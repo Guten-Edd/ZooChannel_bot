@@ -21,12 +21,15 @@ DEBUG = False
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-UTC = 3
+UTC = 3  # Ваш часовой пояс
 UTC = datetime.timedelta(hours=UTC)
 
 RETRY_PERIOD_KOEF = 60
 PERIOD_FROM_MINS = 30
 PERIOD_TO_MINS = 90
+
+TIME_FROM = 9
+TIME_TO = 22
 
 URL_CAT = 'https://api.thecatapi.com/v1/images/search'
 URL_DOG = 'https://api.thedogapi.com/v1/images/search'
@@ -52,12 +55,13 @@ def check_tokens():
     return all(tokens)
 
 def is_day():
+    """Проверка на день. Если ночь, сообщение не отправится."""
     current_time_utc = datetime.datetime.utcnow()
     current_time_local = current_time_utc + UTC
+    logger.debug(f'Проверяем сейчас день или нет: {current_time_local}')
     current_hour_local = current_time_local.hour
-    print(f'сейчас {current_hour_local} часов')
 
-    return current_hour_local < 22 and current_hour_local > 9
+    return current_hour_local < TIME_TO and current_hour_local >= TIME_FROM
 
 
 def get_new_response(animal):
@@ -117,7 +121,9 @@ def main():
     while True:
         try:
             if is_day():
+                logger.debug('Сейчас день!')
                 if count_message == 0:
+                    logger.debug('Первое сообщение!')
                     send_message(bot, MORNING_MESSAGE)  # Утреннее сообщение
                 animal = random.choice(animal_choices)
                 logger.debug(f'Наш зверек это - {animal}')
@@ -127,11 +133,16 @@ def main():
                     send_photo(bot, image_animal, caption=animal.name + ' ' + CAPTION_MESSAGE)
                     count_message += 1
             else:
+                logger.debug('Сейчас ночь!')
                 count_message = 0
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            send_message(bot, message)
+            if is_day():
+                send_message(bot, message)
+            else:
+                logger.error(message)
+
         finally:
             retry_period = RETRY_PERIOD_KOEF * random.randint(
                 PERIOD_FROM_MINS,
