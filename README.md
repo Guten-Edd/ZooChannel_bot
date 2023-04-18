@@ -22,7 +22,7 @@ cd ZooChannel_bot
 Cоздать и активировать виртуальное окружение:
 
 ```
-python -3.7 -m venv env
+python -m venv env
 ```
 
 ```
