@@ -1,14 +1,17 @@
 """Telegram Bot Api."""
+import datetime
 import logging
 import os
 import random
 import sys
-import time, datetime
-
+import time
 
 import requests
 import telegram
 from dotenv import load_dotenv
+
+import database as db
+
 
 load_dotenv()
 
@@ -21,38 +24,48 @@ DEBUG = False
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-UTC = 3  # Ваш часовой пояс
+UTC = int(os.getenv('UTC'))
 UTC = datetime.timedelta(hours=UTC)
 
 RETRY_PERIOD_KOEF = 60
-PERIOD_FROM_MINS = 30
-PERIOD_TO_MINS = 90
+PERIOD_FROM_MINS = int(os.getenv('PERIOD_FROM_MINS'))
+PERIOD_TO_MINS = int(os.getenv('PERIOD_TO_MINS'))
 
-TIME_FROM = 9
-TIME_TO = 22
+TIME_FROM = int(os.getenv('TIME_FROM'))
+TIME_TO = int(os.getenv('TIME_TO'))
 
 URL_CAT = 'https://api.thecatapi.com/v1/images/search'
 URL_DOG = 'https://api.thedogapi.com/v1/images/search'
-CAPIBARA_URL = 'https://api.capy.lol/v1/capybara?json=true' 
+CAPIBARA_URL = 'https://api.capy.lol/v1/capybara?json=true'
 
 MORNING_MESSAGE = 'Привет! Посмотри, каких красавцев я тебе сегодня подобрал!'
 CAPTION_MESSAGE = 'готов тебя порадовать!'
 
 
 class Animal:
+    """Класс животного."""
+
     def __init__(self, name, url, parse_key) -> None:
+        """name-имя живоного.
+
+        url-адрес API
+        parse_key-ключевое слово для парсинга.
+        """
         self.name = name
         self.url = url
         self.parse_key = parse_key
 
     def __str__(self) -> str:
+        """str."""
         return self.name
+
 
 def check_tokens():
     """Проверка токенов."""
     tokens = [TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]
     logger.debug('Проверяем токены')
     return all(tokens)
+
 
 def is_day():
     """Проверка на день. Если ночь, сообщение не отправится."""
@@ -69,12 +82,17 @@ def get_new_response(animal):
     current_url = animal.url
 
     try:
-        response = requests.get(current_url)
-        response = response.json()
-        image_animal = response[animal.parse_key].get('url')
+        exist_response = True
+        while exist_response:
+            response = requests.get(current_url)
+            response = response.json()
+            image_animal = response[animal.parse_key].get('url')
+            exist_response = db.check_existing_url(image_animal)
+            print('image= ', exist_response)
         logger.debug('Фото получено!')
+        db.add_url(image_animal)
         return image_animal
-    
+
     except Exception:
         logger.error('URL - недоступен')
         raise Exception(f'{animal} пока спит!')
@@ -107,7 +125,7 @@ def main():
     if not check_tokens():
         logger.critical('Нет переменных окружения!')
         raise SystemExit('Программа принудительно остановлена.')
-    
+
     cat = Animal('Котик', URL_CAT, 0)
     dog = Animal('Пёсик', URL_DOG, 0)
     capibara = Animal('Капибара', CAPIBARA_URL, 'data')
@@ -116,7 +134,9 @@ def main():
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     logger.debug('Запускаем бота')
-    count_message = 0
+    count_message = 1
+
+    db.check_create_bd()
 
     while True:
         try:
@@ -125,12 +145,15 @@ def main():
                 if count_message == 0:
                     logger.debug('Первое сообщение!')
                     send_message(bot, MORNING_MESSAGE)  # Утреннее сообщение
+                    count_message += 1
+
                 animal = random.choice(animal_choices)
                 logger.debug(f'Наш зверек это - {animal}')
 
                 image_animal = get_new_response(animal)
                 if image_animal:
-                    send_photo(bot, image_animal, caption=animal.name + ' ' + CAPTION_MESSAGE)
+                    send_photo(bot, image_animal, caption=animal.name +
+                               ' ' + CAPTION_MESSAGE)
                     count_message += 1
             else:
                 logger.debug('Сейчас ночь!')
